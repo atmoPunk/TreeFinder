@@ -4,10 +4,12 @@ project(libtreefinder)
 
 set(HEADERS
         libtreefinder/treefinder.h
+        libtreefinder/interpolation.h
         )
 
 set(SOURCES
         libtreefinder/treefinder.cpp
+        libtreefinder/interpolation.cpp
         )
 
 set(CMAKE_CXX_STANDARD 20)
