@@ -1,5 +1,7 @@
 #include <libimages/images.h>
 #include <libtreefinder/treefinder.h>
+#include <libtreefinder/interpolation.h>
+#include <libtreefinder/tree_deliniation.h>
 
 #include <vector>
 #include <limits>
@@ -10,6 +12,32 @@
 
 
 int main(int argc, char **argv) {
+    const float DEM_EMPTY_VALUE = -32767.0f;
+
+    images::Image<float> chm(argv[1]);
+    treefinder::TreeDeliniator td(chm, 5);
+    td.eliminateSmallValues(1.0);
+    auto chm2 = td.chm;
+    for (int i = 0; i < 30; ++i) {
+        auto mx = td.findGlobalMaxima();
+        td.findTreeCrown(mx);
+        std::cout << i << std::endl;
+    }
+
+    images::Image<unsigned char> ortho(argv[2]);
+    for (int i = 0; i < ortho.height; ++i) {
+        for (int j = 0; j < ortho.width; ++j) {
+            if (td.chm(i, j) == DEM_EMPTY_VALUE && td.chm(i, j) != chm2(i, j)) {
+                ortho(i, j, 0) = 0;
+                ortho(i, j, 1) = 0;
+                ortho(i, j, 2) = 0;
+            }
+        }
+    }
+    ortho.savePNG(argv[3]);
+
+    return 0;
+
     if (argc < 5) {
         std::cerr << "Usage: " << argv[0] << " PATH_TO_DEM PATH_TO_ORTHOIMAGE OUTPUT_IMAGE OUTPUT_TREES" << std::endl;
         return 1;
@@ -27,7 +55,6 @@ int main(int argc, char **argv) {
         return 1; // ортоизображение и DEM соотносятся пиксель в пиксель
     }
 
-    const float DEM_EMPTY_VALUE = -32767.0f;
 
     std::vector<float> heights;
     for (size_t j = 0; j < dem.height; ++j) {
@@ -48,6 +75,9 @@ int main(int argc, char **argv) {
               << heights[heights.size()*50/100] <<" m, "
               << heights[heights.size()*99/100] <<" m, "
               << heights[heights.size()-1] << " m" << std::endl;
+
+
+    
 
     treefinder::TreeFinder tf(dem, resolution);
     auto trees = tf.find_trees(2, 7, {6, 6}, {1.2, 1.2}, 5);
