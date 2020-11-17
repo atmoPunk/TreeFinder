@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <boost/geometry.hpp>
 #include <vector>
+#include <functional>
+#include <iostream>
 
 namespace bg = boost::geometry;
 
@@ -14,6 +16,18 @@ namespace {
 
 namespace treefinder {
     using Point = bg::model::d2::point_xy<size_t>;
+    int64_t inc_dir(int64_t i) {
+        return i;
+    }
+
+    int64_t dec_dir(int64_t i) {
+        return -i;
+    }
+
+    int64_t nul_dir(int64_t i) {
+        return 0;
+    }
+
     class TreeDeliniator {
 
     public:
@@ -44,99 +58,44 @@ namespace treefinder {
                     }
                 }
             }
-
+            // std::cout << chm(y, x) << std::endl;
+            // std::cout << "max " << x << " " << y << std::endl;
             return Point(x, y);
+        }
+
+        int64_t getPoint(int64_t start_x, int64_t start_y, std::function<int64_t(int64_t)> dir_x, std::function<int64_t(int64_t)> dir_y, int64_t distance) {
+            float value = chm(start_y, start_x);
+            int64_t cur_dist = 0;
+            for (int64_t i = 1; i <= distance; ++i) {
+                if (int64_t cur_y = start_y + dir_y(i); cur_y < 0 || cur_y >= chm.height) {
+                    break;
+                }
+                if (int64_t cur_x = start_x + dir_x(i); cur_x < 0 || cur_x >= chm.width) {
+                    break;
+                }
+                if (chm(start_y + dir_y(i), start_x + dir_x(i)) < value) {
+                    cur_dist = i;
+                    value = chm(start_y + dir_y(i), start_x + dir_x(i));
+                }
+            }
+            return cur_dist;
         }
         
         void findTreeCrown(Point treetop) {
         //bg::model::polygon<Point> findTreeCrown(Point treetop) const {
-            // vertical profile
             const size_t max_distance = 15; // in pixels for now, TODO: calculate from resolution
             
-            Point p1;
-            {
-                int64_t min_bound = -1;
-                for (int64_t i = treetop.y(); i > std::max<uint64_t>(static_cast<uint64_t>(treetop.y()) - max_distance - 1, 0); --i) {
-                    if (chm(i, treetop.x()) == EMPTY_VAL) {
-                        min_bound = i + 1;
-                        break;
-                    }
-                }
-                float v = chm(treetop.y(), treetop.x());
-                int64_t min_y = -1;
-                for (int64_t i = treetop.y(); i > std::max<uint64_t>(static_cast<uint64_t>(treetop.y()) - max_distance - 1, 0); --i) {
-                    if (chm(i, treetop.x()) != EMPTY_VAL && chm(i, treetop.x()) < v) {
-                        v = chm(i, treetop.x());
-                        min_y = i;
-                    }
-                }
-                p1 = Point(treetop.x(), std::max(min_bound, min_y));
-            }
+            Point p1(treetop.x(), treetop.y() + dec_dir(getPoint(treetop.x(), treetop.y(), nul_dir, dec_dir, max_distance)));
+            Point p2(treetop.x() + dec_dir(getPoint(treetop.x(), treetop.y(), dec_dir, nul_dir, max_distance)), treetop.y());
+            Point p3(treetop.x(), treetop.y() + inc_dir(getPoint(treetop.x(), treetop.y(), nul_dir, inc_dir, max_distance)));
+            Point p4(treetop.x() + inc_dir(getPoint(treetop.x(), treetop.y(), inc_dir, nul_dir, max_distance)), treetop.y());
+            
 
-            Point p2;
-            {
-                int64_t min_bound = 10000;
-                for (int64_t i = treetop.y(); i < std::min<uint64_t>(static_cast<uint64_t>(treetop.y()) + max_distance + 1, chm.height); ++i) {
-                    if (chm(i, treetop.x()) == EMPTY_VAL) {
-                        min_bound = i - 1;
-                        break;
-                    }
-                }
-                float v = chm(treetop.y(), treetop.x());
-                int64_t min_y = 10000;
-                for (int64_t i = treetop.y(); i < std::min<uint64_t>(static_cast<uint64_t>(treetop.y()) + max_distance + 1, chm.height); ++i) {
-                    if (chm(i, treetop.x()) != EMPTY_VAL && chm(i, treetop.x()) < v) {
-                        v = chm(i, treetop.x());
-                        min_y = i;
-                    }
-                }
-                p2 = Point(treetop.x(), std::min(min_bound, min_y));
-            }
+            auto p1f = bg::model::d2::point_xy<float>(p1.x(), p1.y() - 1);
+            auto p2f = bg::model::d2::point_xy<float>(p2.x() - 1, p2.y());
+            auto p3f = bg::model::d2::point_xy<float>(p3.x(), p3.y() + 1);
+            auto p4f = bg::model::d2::point_xy<float>(p4.x() + 1, p4.y());
 
-            Point p3;
-            {
-                int64_t min_bound = -1;
-                for (int64_t i = treetop.x(); i > std::max<uint64_t>(static_cast<uint64_t>(treetop.x()) - max_distance - 1, 0); --i) {
-                    if (chm(treetop.y(), i) == EMPTY_VAL) {
-                        min_bound = i + 1;
-                        break;
-                    }
-                }
-                float v = chm(treetop.y(), treetop.x());
-                int64_t min_y = -1;
-                for (int64_t i = treetop.x(); i > std::max<uint64_t>(static_cast<uint64_t>(treetop.x()) - max_distance - 1, 0); --i) {
-                    if (chm(treetop.y(), i) != EMPTY_VAL && chm(treetop.y(), i) < v) {
-                        v = chm(treetop.y(), i);
-                        min_y = i;
-                    }
-                }
-                p3 = Point(std::max(min_bound, min_y), treetop.y());
-            }
-
-            Point p4;
-            {
-                int64_t min_bound = 10000;
-                for (int64_t i = treetop.x(); i < std::min<uint64_t>(static_cast<uint64_t>(treetop.x()) + max_distance + 1, chm.width); ++i) {
-                    if (chm(treetop.y(), i) == EMPTY_VAL) {
-                        min_bound = i - 1;
-                        break;
-                    }
-                }
-                float v = chm(treetop.y(), treetop.x());
-                int64_t min_y = 10000;
-                for (int64_t i = treetop.x(); i < std::min<uint64_t>(static_cast<uint64_t>(treetop.x()) + max_distance + 1, chm.width); ++i) {
-                    if (chm(treetop.y(), i) != EMPTY_VAL && chm(treetop.y(), i) < v) {
-                        v = chm(treetop.y(), i);
-                        min_y = i;
-                    }
-                }
-                p4 = Point(std::min(min_bound, min_y), treetop.y());
-            }
-
-            auto p1f = bg::model::d2::point_xy<float>(p1.x(), p1.y());
-            auto p2f = bg::model::d2::point_xy<float>(p2.x(), p2.y());
-            auto p3f = bg::model::d2::point_xy<float>(p3.x(), p3.y());
-            auto p4f = bg::model::d2::point_xy<float>(p4.x(), p4.y());
             bg::model::polygon<bg::model::d2::point_xy<float>> poly;
             bg::append(poly, p1f);
             bg::append(poly, p2f);
@@ -149,12 +108,12 @@ namespace treefinder {
                 for (int64_t j = 0; j < chm.width; ++j) {
                     auto pt = bg::model::d2::point_xy<float>(j, i);
                     if (bg::within(pt, hull)) {
-                        chm(j, i) = EMPTY_VAL;
+                        // std::cout << "nulled " << i << " " << j << std::endl;
+                        chm(i, j) = EMPTY_VAL;
                     }
                 }
             }
             tree_crowns.push_back(hull);
-
         }
 
     // private:
