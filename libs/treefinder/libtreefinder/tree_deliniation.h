@@ -6,32 +6,28 @@
 #include <boost/geometry.hpp>
 #include <vector>
 #include <functional>
+#include <cmath>
 #include <iostream>
 
 namespace bg = boost::geometry;
 
 namespace {
     const float EMPTY_VAL = -32767.0f;
+    const float EMPTY_BOUND = -30000.0f;
 }
 
 namespace treefinder {
-    using Point = bg::model::d2::point_xy<size_t>;
-    int64_t inc_dir(int64_t i) {
-        return i;
-    }
+    using Point = bg::model::d2::point_xy<int64_t>;
+    int64_t inc_dir(int64_t i);
 
-    int64_t dec_dir(int64_t i) {
-        return -i;
-    }
+    int64_t dec_dir(int64_t i);
 
-    int64_t nul_dir(int64_t i) {
-        return 0;
-    }
+    int64_t nul_dir(int64_t i);
 
     class TreeDeliniator {
 
     public:
-        TreeDeliniator(images::Image<float> chm, float resolution) : chm(chm), resolution(resolution) {}
+        TreeDeliniator(images::Image<float> chm, float resolution);
 
         void eliminateSmallValues(float boundary) {
             for (size_t i = 0; i < chm.height; ++i) {
@@ -43,82 +39,79 @@ namespace treefinder {
             }
         }
 
-        //void smooth()
-       
-        bg::model::d2::point_xy<size_t> findGlobalMaxima() const {
-            float max = EMPTY_VAL;
-            size_t x = -1;
-            size_t y = -1;
-            for (size_t i = 0; i < chm.height; ++i) {
-                for (size_t j = 0; j < chm.width; ++j) {
-                    if (chm(i, j) > max) {
-                        max = chm(i, j);
-                        x = j;
-                        y = i;
+        [[nodiscard]] Point findGlobalMaxima() const;
+
+        template <typename DirFunc>
+        double getMedianSlope(int64_t start_x, int64_t start_y, DirFunc dir_x, DirFunc dir_y, int64_t distance, bool abs = false) const {
+            std::vector<double> slopes;
+            for (int64_t j = 0; j < distance; ++j) {
+                double slope_radian = std::atan((-chm(start_y + dir_y(j), start_x + dir_x(j)) + chm(start_y + dir_y(j + 1), start_x + dir_x(j + 1))) / 0.1); // TODO: resolution
+                slopes.push_back(abs ? std::abs(slope_radian * 180.0 * M_1_PI) : slope_radian * 180.0 * M_1_PI);
+            }
+            std::sort(slopes.begin(), slopes.end());
+            double median = slopes[slopes.size() / 2];
+            return median;
+        }
+
+        template <typename DirFunc>
+        int64_t getWindowSize(int64_t max_x, int64_t max_y, int64_t start_x, int64_t start_y, DirFunc dir_x, DirFunc dir_y) const {
+            double max_val = chm(max_y, max_x);
+            double min_val = chm(start_y, start_x);
+            double steepRight = std::atan(getMedianSlope(start_x, start_y, dir_x, dir_y, static_cast<int>(std::round(1.5 * resolution)), true));
+            double otherHeight = (max_val + min_val) / 2.0;
+            double crown_ratio_cone = 0.8;
+            double eps = 5;
+            double o_c = 2.0 / 3.0;
+            double crown_radius_cone = (otherHeight * crown_ratio_cone) / (std::tan((90 - eps) * M_PI / 180.0)) * o_c;
+            double crown_ratio_sphere = 0.7;
+            double o_s = 1.0 / 3.0;
+            double crown_radius_sphere = (otherHeight * crown_ratio_sphere) / 2.0 * o_s;
+            double wrd = crown_radius_cone * (1.0 - (90 - eps - steepRight) / (90 - eps - 32.7))
+                    + crown_radius_sphere * ((90 - eps - steepRight) / (90 - eps - 32.7));
+            return static_cast<int64_t>(std::round(wrd * resolution));
+        }
+
+        template <typename DirFunc>
+        int64_t getPoint(int64_t start_x, int64_t start_y, DirFunc dir_x, DirFunc dir_y, int64_t distance) const {
+            for (int64_t i = 1; i <= distance; ++i) {
+                int64_t cur_y = start_y + dir_y(i);
+                int64_t cur_x = start_x + dir_x(i);
+                if (cur_y < 0 || cur_y >= chm.height) {
+                    distance = i - 1;
+                    break;
+                }
+                if (cur_x < 0 || cur_x >= chm.width) {
+                    distance = i - 1;
+                    break;
+                }
+                if (chm(cur_y, cur_x) < EMPTY_BOUND) {
+                    distance = i - 1;
+                    break;
+                }
+            }
+
+            for (int64_t i = 1; i <= distance - 5; ++i) {
+                auto cur = chm(start_y + dir_y(i), start_x + dir_x(i));
+                if (chm(start_y + dir_y(i - 1), start_x + dir_x(i - 1)) > cur && cur < chm(start_y + dir_y(i + 1), start_x + dir_x(i + 1))) {
+                    // local minimum
+                    // was 5
+                    int64_t window_size = getWindowSize(start_x, start_y, start_x + dir_x(i), start_y + dir_y(i), dir_x, dir_y);
+                    double ls_median = getMedianSlope(start_x, start_y, dir_x, dir_y, i);
+                    double rs_median = getMedianSlope(start_x + dir_x(i), start_y + dir_y(i), dir_x, dir_y, window_size);
+                    if (ls_median < 0 && rs_median > 0) {
+                        return i;
                     }
                 }
             }
-            // std::cout << chm(y, x) << std::endl;
-            // std::cout << "max " << x << " " << y << std::endl;
-            return Point(x, y);
-        }
-
-        int64_t getPoint(int64_t start_x, int64_t start_y, std::function<int64_t(int64_t)> dir_x, std::function<int64_t(int64_t)> dir_y, int64_t distance) {
-            float value = chm(start_y, start_x);
-            int64_t cur_dist = 0;
-            for (int64_t i = 1; i <= distance; ++i) {
-                if (int64_t cur_y = start_y + dir_y(i); cur_y < 0 || cur_y >= chm.height) {
-                    break;
-                }
-                if (int64_t cur_x = start_x + dir_x(i); cur_x < 0 || cur_x >= chm.width) {
-                    break;
-                }
-                if (chm(start_y + dir_y(i), start_x + dir_x(i)) < value) {
-                    cur_dist = i;
-                    value = chm(start_y + dir_y(i), start_x + dir_x(i));
-                }
-            }
-            return cur_dist;
+            return distance;
         }
         
-        void findTreeCrown(Point treetop) {
-        //bg::model::polygon<Point> findTreeCrown(Point treetop) const {
-            const size_t max_distance = 15; // in pixels for now, TODO: calculate from resolution
-            
-            Point p1(treetop.x(), treetop.y() + dec_dir(getPoint(treetop.x(), treetop.y(), nul_dir, dec_dir, max_distance)));
-            Point p2(treetop.x() + dec_dir(getPoint(treetop.x(), treetop.y(), dec_dir, nul_dir, max_distance)), treetop.y());
-            Point p3(treetop.x(), treetop.y() + inc_dir(getPoint(treetop.x(), treetop.y(), nul_dir, inc_dir, max_distance)));
-            Point p4(treetop.x() + inc_dir(getPoint(treetop.x(), treetop.y(), inc_dir, nul_dir, max_distance)), treetop.y());
-            
-
-            auto p1f = bg::model::d2::point_xy<float>(p1.x(), p1.y() - 1);
-            auto p2f = bg::model::d2::point_xy<float>(p2.x() - 1, p2.y());
-            auto p3f = bg::model::d2::point_xy<float>(p3.x(), p3.y() + 1);
-            auto p4f = bg::model::d2::point_xy<float>(p4.x() + 1, p4.y());
-
-            bg::model::polygon<bg::model::d2::point_xy<float>> poly;
-            bg::append(poly, p1f);
-            bg::append(poly, p2f);
-            bg::append(poly, p3f);
-            bg::append(poly, p4f);
-
-            bg::model::polygon<bg::model::d2::point_xy<float>> hull;
-            bg::convex_hull(poly, hull);
-            for (int64_t i = 0; i < chm.height; ++i) {
-                for (int64_t j = 0; j < chm.width; ++j) {
-                    auto pt = bg::model::d2::point_xy<float>(j, i);
-                    if (bg::within(pt, hull)) {
-                        // std::cout << "nulled " << i << " " << j << std::endl;
-                        chm(i, j) = EMPTY_VAL;
-                    }
-                }
-            }
-            tree_crowns.push_back(hull);
-        }
+//        std::vector<std::pair<int64_t, int64_t>> findTreeCrown(Point treetop) {
+        bg::model::polygon<Point> findTreeCrown(Point treetop);
 
     // private:
         images::Image<float> chm;
-        std::vector<bg::model::polygon<bg::model::d2::point_xy<float>>> tree_crowns;
+        std::vector<bg::model::polygon<bg::model::d2::point_xy<int64_t>>> tree_crowns;
         float resolution;
     };
 }

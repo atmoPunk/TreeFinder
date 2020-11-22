@@ -8,33 +8,131 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
-#include <opencv2/imgproc.hpp>
+q// #include <opencv2/imgproc.hpp>
+#include <cmath>
 
+struct Color {
+    int red;
+    int green;
+    int blue;
+};
+
+template <typename T>
+void plotLineLow(int64_t x0, int64_t y0, int64_t x1, int64_t y1, images::Image<T>& image, const Color& color) {
+    int64_t dx = x1 - x0;
+    int64_t dy = y1 - y0;
+    int64_t yi = 1;
+    if (dy < 0) {
+        yi = -1;
+        dy = -dy;
+    }
+    int64_t D = (2 * dy) - dx;
+    int64_t y = y0;
+
+    for (int64_t x = x0 ; x <= x1; ++x) {
+        image(y, x, 0) = color.red;
+        image(y, x, 1) = color.green;
+        image(y, x, 2) = color.blue;
+        if (D > 0) {
+            y = y + yi;
+            D = D + (2 * (dy - dx));
+        } else {
+            D = D + 2 * dy;
+        }
+    }
+}
+
+template <typename T>
+void plotLineHigh(int64_t x0, int64_t y0, int64_t x1, int64_t y1, images::Image<T>& image, const Color& color) {
+    int64_t dx = x1 - x0;
+    int64_t dy = y1 - y0;
+    int64_t xi = 1;
+    if (dx < 0) {
+        xi = -1;
+        dx = -dx;
+    }
+    int64_t D = (2 * dx) - dy;
+    int64_t x = x0;
+
+    for (int64_t y = y0; y <= y1; ++y) {
+        image(y, x, 0) = color.red;
+        image(y, x, 1) = color.green;
+        image(y, x, 2) = color.blue;
+        if (D > 0) {
+            x = x + xi;
+            D = D + (2 * (dx - dy));
+        } else {
+            D = D + 2 * dx;
+        }
+    }
+}
+
+template <typename T>
+void plotLine(int64_t x0, int64_t y0, int64_t x1, int64_t y1, images::Image<T>& image, const Color& color) {
+    if (std::abs(y1 - y0) < std::abs(x1 - x0)) {
+        if (x0 > x1) {
+            plotLineLow(x1, y1, x0, y0, image, color);
+        } else {
+            plotLineLow(x0, y0, x1, y1, image, color);
+        }
+    } else {
+        if (y0 > y1) {
+            plotLineHigh(x1, y1, x0, y0, image, color);
+        } else {
+            plotLineHigh(x0, y0, x1, y1, image, color);
+        }
+    }
+}
 
 int main(int argc, char **argv) {
+
+    std::cout << argv[2] << ' ' << argv[3] << std::endl;
     const float DEM_EMPTY_VALUE = -32767.0f;
+
+    int tree_count = 0;
+    std::cout << "Enter number of trees to find: ";
+    std::cin >> tree_count;
 
     images::Image<float> chm(argv[1]);
     treefinder::TreeDeliniator td(chm, 5);
     td.eliminateSmallValues(1.0);
-    auto chm2 = td.chm;
-    for (int i = 0; i < 30; ++i) {
+    std::vector<Color> colors;
+    colors.push_back({250 << 8, 40 << 8, 40 << 8});
+    colors.push_back({40 << 8, 250 << 8, 40 << 8});
+    colors.push_back({40 << 8, 40 << 8, 250 << 8});
+    colors.push_back({190 << 8, 23 << 8, 209 << 8});
+    colors.push_back({209 << 8, 199 << 8, 23 << 8});
+    colors.push_back({247 << 8, 131 << 8, 0 << 8});
+    int cur_color = 0;
+    auto chm2 = td.chm.copy();
+    images::Image<unsigned short> ortho(argv[2]);
+    for (int i = 0; i < tree_count; ++i) {
         auto mx = td.findGlobalMaxima();
-        td.findTreeCrown(mx);
-        std::cout << i << std::endl;
+        auto crown = td.findTreeCrown(mx);
+        for (auto it = ++crown.outer().begin(); it != crown.outer().end(); ++it) {
+            auto prev = it;
+            --prev;
+            plotLine(boost::geometry::get<0>(*prev), boost::geometry::get<1>(*prev), boost::geometry::get<0>(*it), boost::geometry::get<1>(*it), ortho, colors[0]);
+        }
+//        for (int64_t x = 0; x < std::min(ortho.width, chm.width); ++x) {
+//            for (int64_t y = 0; y < std::min(ortho.height, chm.height); ++y) {
+//                if (td.chm(y, x) != chm2(y, x) && td.chm(y, x) == DEM_EMPTY_VALUE) {
+//                    ortho(y, x, 0) = colors[0].red;
+//                    ortho(y, x, 1) = colors[0].green;
+//                    ortho(y, x, 2) = colors[0].blue;
+//                }
+//            }
+//        }
+        std::cout << "iter: " << i << std::endl;
+    	std::cout << boost::geometry::dsv(td.tree_crowns[i]) << std::endl;
+        cur_color = (cur_color + 1) % colors.size();
     }
 
-    images::Image<unsigned char> ortho(argv[2]);
-    for (int i = 0; i < ortho.height; ++i) {
-        for (int j = 0; j < ortho.width; ++j) {
-            if (td.chm(i, j) == DEM_EMPTY_VALUE && td.chm(i, j) != chm2(i, j)) {
-                ortho(i, j, 0) = 0;
-                ortho(i, j, 1) = 0;
-                ortho(i, j, 2) = 0;
-            }
-        }
-    }
-    ortho.savePNG(argv[3]);
+    std::cout << ortho.height << " " << ortho.width << std::endl;
+    std::cout << chm.height << " " << chm.width << std::endl;
+
+
+    ortho.saveJPEG(argv[3]);
 
     return 0;
 
