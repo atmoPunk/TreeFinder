@@ -15,4 +15,6 @@ void descend_layer(const images::Image<float>& upper, images::Image<float>& lowe
 
 images::Image<float> interpolate_pyramid(std::vector<images::Image<float>> pyramid);
 
+images::Image<float> build_chm(const images::Image<float>& dem, float offset, int xblocksize, int yblocksize);
+
 } // namespace end

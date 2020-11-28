@@ -1,3 +1,4 @@
+#include <iostream>
 #include "interpolation.h"
 
 namespace treefinder {
@@ -62,6 +63,48 @@ images::Image<float> interpolate_pyramid(std::vector<images::Image<float>> pyram
     }
 
     return pyramid[0];
+}
+
+images::Image<float> build_chm(const images::Image<float> &dem, float offset, int xblocksize, int yblocksize) {
+    images::Image<float> chm(dem.width, dem.height, 1);
+    const int XBLOCKSIZE = xblocksize;
+    const int YBLOCKSIZE = yblocksize;
+    int xblocks = dem.width / XBLOCKSIZE;
+    int yblocks = dem.height / YBLOCKSIZE;
+    chm.fill(EMPTY_VAL);
+    for (int i = 0; i < yblocks; ++i) {
+        for (int j = 0; j < xblocks; ++j) {
+            int xmin = XBLOCKSIZE * j;
+            int ymin = YBLOCKSIZE * i;
+            float minval = dem(ymin, xmin);
+            for (int ii = 0; ii < YBLOCKSIZE; ++ii) {
+                for (int jj = 0; jj < XBLOCKSIZE; ++jj) {
+                    if (dem(YBLOCKSIZE * i + ii, XBLOCKSIZE * j + jj) == EMPTY_VAL) {
+                        continue;
+                    }
+                    if (dem(YBLOCKSIZE * i + ii, XBLOCKSIZE * j + jj) < minval) {
+                        xmin = XBLOCKSIZE * j + jj;
+                        ymin = YBLOCKSIZE * i + ii;
+                    }
+                }
+            }
+            chm(ymin, xmin) = dem(ymin, xmin) + offset;
+        }
+    }
+    auto pyramid = build_pyramid(chm);
+    chm = interpolate_pyramid(pyramid);
+
+    for (int i = 0; i < dem.height; ++i) {
+        for (int j = 0; j < dem.width; ++j) {
+            if (dem(i, j) == EMPTY_VAL) {
+                chm(i, j) = EMPTY_VAL;
+            } else {
+                chm(i, j) = dem(i, j) - chm(i, j);
+                chm(i, j) = std::max(chm(i, j), 0.0f);
+            }
+        }
+    }
+    return chm;
 }
 
 }

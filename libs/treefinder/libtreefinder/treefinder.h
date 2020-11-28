@@ -14,33 +14,34 @@ namespace treefinder {
             float b;
         };
 
-        TreeFinder(images::Image<float> depthmap, float resolution);
+        TreeFinder(images::Image<float> depthmap, float resolution, int blur_size = -1);
 
-        std::vector<std::pair<size_t, size_t>> find_trees(size_t maxima_radius, size_t search_radius, ParaboloidConfig upper, ParaboloidConfig lower, size_t lower_offset);
+        std::vector<std::pair<size_t, size_t>> find_trees(size_t maxima_radius, size_t search_radius, ParaboloidConfig upper, ParaboloidConfig lower, float lower_offset);
 
     private:
         images::Image<float> depthmap;
         float resolution;
 
-        std::vector<std::vector<float>> generate_neg_paraboloid(float a, float b, float resolution, size_t steps);
-        std::vector<std::vector<float>> subtract_mid(const images::Image<float> depthmap, size_t row, size_t col, size_t rad);
+        static std::vector<std::vector<float>> generate_neg_paraboloid(float a, float b, float resolution, size_t steps);
+        static std::vector<std::vector<float>> subtract_mid(const images::Image<float>& depthmap, size_t row, size_t col, size_t rad);
     
-        bool is_local_maxima(const images::Image<float>& depthmap, size_t row, size_t col, size_t size);
+        bool is_local_maxima(size_t row, size_t col, size_t size) const;
     
-        std::vector<std::pair<size_t, size_t>> find_local_maxima(const images::Image<float>& depthmap, size_t size);
+        std::vector<std::pair<size_t, size_t>> find_local_maxima(size_t size) const;
 
-        bool matrix_ge(const std::vector<std::vector<float>>& lhs, const std::vector<std::vector<float>>& rhs);
+        static bool matrix_ge(const std::vector<std::vector<float>>& lhs, const std::vector<std::vector<float>>& rhs);
     };
 
     namespace util {
 
         struct Color {
-            uint8_t red;
-            uint8_t green;
-            uint8_t blue;
+            int red;
+            int green;
+            int blue;
         };
 
-        void draw_mark(images::Image<unsigned char>& image, int64_t row, int64_t col, Color color, size_t size);
+        template <typename T>
+        void draw_mark(images::Image<T>& image, int64_t row, int64_t col, Color color, size_t size);
 
     }
 }
